@@ -1,0 +1,187 @@
+---
+title: "biol6207 asst2"
+author: "Wang Zuocheng7521661"
+date: "29/10/2022"
+output: html_document
+---
+Github link: https://github.com/u7521661/biol6207-asst2.git
+
+1.Firstly we import all the packages we need.
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(pacman)
+library(orchaRd)
+library(metafor)
+library(survival)
+library(survminer)
+library(fpp2)
+```
+Then import all the required files.
+```{r}
+rm(list=ls())
+setwd("data/")
+oa <-read.csv("OA_activitydat_20190302_BIOL3207.csv")
+ocean <-read.csv("ocean_meta_data.csv")
+clark <-read.csv("clark_paper_data.csv")
+```
+
+```{r}
+oa <-subset(oa,oa$activity !="NA")
+```
+
+```{r}
+unique(oa$species) #View all species in the data to be merged.
+ambon <-oa %>% filter(species=="ambon")  #Assign each species independently to a new dataframe.
+lemon <-oa %>% filter(species=="lemon")
+chromis <-oa %>% filter(species=="chromis")
+acantho <-oa %>% filter(species=="acantho")
+humbug <-oa %>% filter(species=="humbug")
+whitedams <-oa %>% filter(species=="whitedams")
+```
+
+2.There are formatting differences between the clark et al. metadata ("Clark" in this document) and the master table (Ocean), and they need to be made consistent.
+```{r}
+clark$Pub.year.IF <-as.character(clark$Pub.year.IF)
+clark$X2017.IF <-as.character(clark$X2017.IF)
+clark$Average.n <-as.character(clark$Average.n)
+```
+
+Next, the mean and standard deviation were calculated separately for each species.
+```{r}
+s1 <- clark %>% mutate(Species = "Pomacentrus amboinensis",
+                       ctrl.n=nrow(ambon%>% filter(treatment=="control")),
+                       ctrl.mean=mean(subset(ambon,ambon$treatment=="control")$activity),
+                       ctrl.sd = sd(subset(ambon,ambon$treatment=="control")$activity),
+                       oa.n = nrow(ambon%>%filter(treatment=="CO2")),
+                       oa.mean=mean(subset(ambon,ambon$treatment=="CO2")$activity),
+                       oa.sd = sd(subset(ambon,ambon$treatment=="CO2")$activity),)
+s2 <- clark %>% mutate(Species = "Pomacentrus moluccensis",
+                       ctrl.n=nrow(lemon%>% filter(treatment=="control")),
+                       ctrl.mean=mean(subset(lemon,lemon$treatment=="control")$activity),
+                       ctrl.sd = sd(subset(lemon,lemon$treatment=="control")$activity),
+                       oa.n = nrow(lemon%>%filter(treatment=="CO2")),
+                       oa.mean=mean(subset(lemon,lemon$treatment=="CO2")$activity),
+                       oa.sd = sd(subset(lemon,lemon$treatment=="CO2")$activity),)
+s3 <- clark %>% mutate(Species = "Chromis atripectoralis",
+                       ctrl.n=nrow(chromis%>% filter(treatment=="control")),
+                       ctrl.mean=mean(subset(chromis,chromis$treatment=="control")$activity),
+                       ctrl.sd = sd(subset(chromis,chromis$treatment=="control")$activity),
+                       oa.n = nrow(chromis%>%filter(treatment=="CO2")),
+                       oa.mean=mean(subset(chromis,chromis$treatment=="CO2")$activity),
+                       oa.sd = sd(subset(chromis,chromis$treatment=="CO2")$activity),)
+s4 <- clark %>% mutate(Species = "Acanthochromis polyacanthus",
+                       ctrl.n=nrow(acantho%>% filter(treatment=="control")),
+                       ctrl.mean=mean(subset(acantho,acantho$treatment=="control")$activity),
+                       ctrl.sd = sd(subset(acantho,acantho$treatment=="control")$activity),
+                       oa.n = nrow(acantho%>%filter(treatment=="CO2")),
+                       oa.mean=mean(subset(acantho,acantho$treatment=="CO2")$activity),
+                       oa.sd = sd(subset(acantho,acantho$treatment=="CO2")$activity),)
+s5 <- clark %>% mutate(Species = "Dascyllus aruanus",
+                       ctrl.n=nrow(humbug%>% filter(treatment=="control")),
+                       ctrl.mean=mean(subset(humbug,humbug$treatment=="control")$activity),
+                       ctrl.sd = sd(subset(humbug,humbug$treatment=="control")$activity),
+                       oa.n = nrow(humbug%>%filter(treatment=="CO2")),
+                       oa.mean=mean(subset(humbug,humbug$treatment=="CO2")$activity),
+                       oa.sd = sd(subset(humbug,humbug$treatment=="CO2")$activity),)
+s6 <- clark %>% mutate(Species = "Dischistodus perspicillatus",
+                       ctrl.n=nrow(whitedams%>% filter(treatment=="control")),
+                       ctrl.mean=mean(subset(whitedams,whitedams$treatment=="control")$activity),
+                       ctrl.sd = sd(subset(whitedams,whitedams$treatment=="control")$activity),
+                       oa.n = nrow(whitedams%>%filter(treatment=="CO2")),
+                       oa.mean=mean(subset(whitedams,whitedams$treatment=="CO2")$activity),
+                       oa.sd = sd(subset(whitedams,whitedams$treatment=="CO2")$activity),)
+clark_new <-bind_rows(s1,s2,s3,s4,s5,s6)  #Combine the collated data into a single table "Clark".
+write.csv(clark_new,file="6207asst2clark_paper_data.csv")
+```
+
+3. Now we can merge the metadata with the resulting 6 new rows of data. In the mean time, to make the interface simpler, we can remove the redundant variables.
+
+
+```{r}
+ocean$Average.n <-as.character(ocean$Average.n)
+ocean2 <- bind_rows(ocean,clark_new)
+write.csv(ocean, file = "6207asst2ocean_meta_data.csv")
+```
+
+```{r}
+rm(s1,s2,s3,s4,s5,s6,acantho,ambon,chromis,humbug,lemon,whitedams,clark)
+```
+
+4. To calculate the log response ratio we need to use the MOD method of the escalc function, but first we need to remove the na value to ensure that the analysis results are not wrong.
+```{r}
+ocean2 <- ocean2%>%filter(!is.na(oa.mean)) %>%filter(!is.na(Species))%>%filter(!is.na(Study))
+result <-ocean2 %>% escalc(measure="ROM", m1i = ocean2$oa.mean,sd1i = ocean2$oa.sd,n1i = ocean2$oa.n,m2i = ocean2$ctrl.mean,sd2i = ocean2$ctrl.sd, n2i = ocean2$ctrl.n)
+```
+
+5.To represent the differences between experiments, we add the residual column, which is a column consisting of consecutive integers.
+We then selected life stage as the independent variable and setting, species, study, and residual as random factors for meta-analysis
+```{r}
+ocean2<- ocean2%>%mutate(residual=1:nrow(ocean2))
+result2 <- rma.mv(result$yi~Life.stage,V=result$vi,
+                  random=list(~1|Species,
+                               ~1|Study,
+                              ~1|residual),
+                  test = "t",
+                  data=ocean2
+                  )
+result2
+```
+According to the result of meta analysis, it can be seen that the adult estimate is different from the other life stages and is negative. This may represent a smaller effect of acidified environments on adults, but given the high p-values for all groups, it cannot be assumed that acidification affects fish of different ages.
+
+6.
+```{r}
+pre <- predict(result2)
+pre <-data.frame(pre)
+ggplot(data=pre,aes(pred,fill=se))+geom_histogram()
+```
+Of the expectations for vi estimates, most were close to 0, but some exceeded 0.3, suggesting that the significance of the effect may be related to other factors, such as year or different studies.
+
+The resulting data is then presented using an orchard plot.
+```{r}
+orchard_plot(result2,mod = "Life.stage", group = "Species",data = ocean2,xlab = "Logarithmic value of the effect")
+```
+The orchard plot also shows that most of the points are concentrated near the zero point, with only a small proportion of the larvae to the right of the zero point. It can be seen that the effect of acidification is small.
+
+7.The funnel plot is shown below.
+```{r}
+funnel(x = result$yi, vi = result$vi, 
+                yaxis = "seinv",
+                level = c(0.1, 0.05, 0.01), ylim = c(1,75),xlim = c(-1,1),
+                shade = c("white", "gray55", "gray 75"), las = 1, 
+                xlab = "Logarithmic value of the effect", atransf=tanh, legend = TRUE)
+```
+8.The time lag diagram is shown below. It can be seen that the significance of yi, i.e. ocean acidification, is gradually decreasing as the years progress. It seems that the year can be a key factor to consider.
+```{r}
+ggplot(ocean2, aes(y = result$yi, x = Year..online., size = 1/sqrt(result$vi))) + geom_point(alpha = 0.30) + geom_smooth(method = lm, col = "red", show.legend = FALSE) + theme_classic()+xlab("year")+ylab("Logarithmic value of the effect")
+```
+
+9.Below are the results of the meta-analysis with chronology as the influencing factor, and it can be seen that the estimate for intercept is very high, which indicates that ref has a significant influence. In addition, the estimate for year is less than 0 and has a very small p-value, which indicates that year is indeed a key factor influencing the results of the study.
+```{r}
+metareg_time <- rma.mv(result$yi ~ Year..online., V = result$vi, 
+                    random = list(~1|Species, 
+                                  ~1|residual), 
+                    test = "t", dfs = "contain", 
+                    data = ocean2)
+summary(metareg_time)
+```
+
+10.rr, the inverse sampling variance, likewise showed significance, which suggests that the precision of the study has a significant impact on the results.
+```{r}
+ocean2 <- ocean2%>%mutate(rr=1/result$vi)
+ocean_new <- ocean2%>% filter(rr <= quantile(ocean2$rr,probs = 0.95,na.rm = TRUE))
+result_new <-result %>% mutate(rr=1/vi) %>%filter(rr<=quantile(rr,probs = 0.95,na.rm = TRUE))
+metareg_lnr <- rma.mv(result_new$yi ~ rr, V = result_new$vi, 
+                    random = list(~1|Species, 
+                                  ~1|residual), 
+                    test = "t", dfs = "contain", 
+                    data = ocean_new)
+summary(metareg_lnr)
+```
+11. From the analysis we can see that the results of the study did show a degree of publication bias, which led to the results of the experiment tending to detect an effect of ocean acidification on the activity of fish. This could be a result of the particular environment in which the earliest studies were conducted, or the fact that the species studied were more sensitive to acidic substances such as carbon dioxide. It makes the effect of the treatment significant.
+
+```{r}
+ggplot(data = ocean_new,aes(x=Year..online.,y=rr))+geom_jitter()+geom_smooth(method = "lm")
+```
+12.As can be seen in the graph, there is a definite upward trend in rr values with year, which suggests that the initial bias is fading as more studies are conducted.
+This result, which is identical to that of Clement et al. and which suggests that seawater acidification has less of an effect on fish, reminds us that we cannot trust the initial findings blindly, and also that we cannot be sure that such phenomena will disappear completely after experiments and studies have accumulated over time.
